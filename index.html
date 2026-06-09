@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Service Health Checker — Built From Scratch</title>
+<meta name="description" content="An original from-scratch build of a service health checker: a tiny containerised endpoint that probes a set of websites and exports their up/down status as Prometheus-style metrics." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --accent:#2563eb; --accent-soft:#e4ecfd; --ink:#16201f; --muted:#5d6b69;
+    --line:#dfe5e3; --bg:#fbfcfb; --card:#ffffff;
+    --serif:'Fraunces',Georgia,serif; --sans:'Inter',system-ui,sans-serif; --mono:'JetBrains Mono',monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.65;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:0 28px}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:.86em;background:var(--accent-soft);padding:.1em .4em;border-radius:4px;color:#1d4ed8}
+  h1,h2,h3{font-family:var(--serif);font-weight:500;line-height:1.15;letter-spacing:-.01em}
+  /* Header */
+  header.hero{padding:88px 0 56px;border-bottom:1px solid var(--line)}
+  .eyebrow{font-family:var(--mono);font-size:.74rem;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin:0 0 22px}
+  h1{font-size:clamp(2.6rem,6vw,4.1rem);margin:0 0 18px}
+  .lede{font-size:1.22rem;color:var(--muted);max-width:62ch;margin:0 0 28px}
+  .meta{display:flex;flex-wrap:wrap;gap:10px;font-size:.82rem}
+  .chip{font-family:var(--mono);font-size:.72rem;letter-spacing:.04em;border:1px solid var(--line);border-radius:999px;padding:5px 12px;color:var(--muted);background:var(--card)}
+  /* Sections */
+  section{padding:54px 0;border-bottom:1px solid var(--line)}
+  .kicker{font-family:var(--mono);font-size:.74rem;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:0 0 14px}
+  h2{font-size:clamp(1.7rem,3.4vw,2.3rem);margin:0 0 20px}
+  h3{font-size:1.2rem;margin:0 0 6px}
+  p{margin:0 0 18px;max-width:68ch}
+  .muted{color:var(--muted)}
+  /* Stack grid */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:8px}
+  .tool{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px}
+  .tool .t{font-family:var(--mono);font-size:.78rem;color:var(--accent);letter-spacing:.04em;margin-bottom:8px}
+  .tool h3{font-size:1.05rem;font-family:var(--sans);font-weight:600;margin-bottom:6px}
+  .tool p{font-size:.92rem;color:var(--muted);margin:0}
+  /* Pipeline / modules */
+  ol.flow{counter-reset:s;list-style:none;padding:0;margin:24px 0 0}
+  ol.flow li{position:relative;padding:18px 0 18px 56px;border-top:1px solid var(--line)}
+  ol.flow li:before{counter-increment:s;content:counter(s,decimal-leading-zero);position:absolute;left:0;top:18px;font-family:var(--mono);font-size:.8rem;color:var(--accent);border:1px solid var(--line);border-radius:8px;width:38px;height:38px;display:grid;place-items:center;background:var(--card)}
+  ol.flow li h3{font-family:var(--sans);font-size:1.02rem;font-weight:600;margin:0 0 4px}
+  ol.flow li p{margin:0;font-size:.93rem;color:var(--muted)}
+  .tag{display:inline-block;font-family:var(--mono);font-size:.68rem;padding:2px 7px;border-radius:5px;margin-left:8px;vertical-align:middle}
+  .tag.on{background:#e6f7ec;color:#1c7a43}
+  .tag.off{background:#fdecea;color:#b23b2c}
+  /* Callout */
+  .callout{background:var(--accent-soft);border:1px solid #c9d8f9;border-radius:14px;padding:24px 26px;margin-top:8px}
+  .callout p:last-child{margin:0}
+  /* Reflection list */
+  ul.learn{list-style:none;padding:0;margin:8px 0 0}
+  ul.learn li{padding:14px 0 14px 30px;border-top:1px solid var(--line);position:relative;color:var(--muted);max-width:68ch}
+  ul.learn li:before{content:"→";position:absolute;left:0;color:var(--accent);font-family:var(--mono)}
+  ul.learn li b{color:var(--ink);font-weight:600}
+  /* Footer */
+  footer{padding:48px 0 80px}
+  .credit{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px}
+  .credit .k{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  footer .fine{font-size:.8rem;color:var(--muted);margin-top:22px;text-align:center}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">From-Scratch Build · Observability</p>
+    <h1>Service Health Checker</h1>
+    <p class="lede">A tiny service that quietly polls a list of websites, asks each one "are you up?", and publishes the answers as metrics a monitoring system can graph and alert on. Built from scratch to learn how uptime monitoring actually works under the hood.</p>
+    <div class="meta">
+      <span class="chip">Python</span><span class="chip">Flask</span><span class="chip">Prometheus</span>
+      <span class="chip">Docker</span><span class="chip">Monitoring</span>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <p class="kicker">What it is</p>
+    <h2>A heartbeat monitor for your services</h2>
+    <p>When you run several websites, the question that matters most is the simplest: <i>are they up right now?</i> This build answers it continuously. It holds a small list of target URLs, and whenever asked, it sends each one a quick HTTP request and records whether it responded — and with what status code.</p>
+    <p>Crucially, it doesn't store or graph anything itself. Instead it exposes a single <code>/metrics</code> endpoint that speaks the <b>Prometheus</b> exposition format — plain text lines like <code>http_status{target="site"} 200</code>. A monitoring system scrapes that endpoint on a schedule, builds the history, draws the dashboards and fires the alerts. The checker's whole job is to be the honest little sensor at the bottom of that stack.</p>
+    <div class="callout">
+      <p><b>The core idea I wanted to learn:</b> good monitoring separates <i>measuring</i> from <i>storing</i>. This service only measures — it exports a number on demand. By following Prometheus's pull model, a fifty-line script plugs straight into a full observability pipeline.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="kicker">The stack</p>
+    <h2>Tools under the hood</h2>
+    <p class="muted">The point of this rebuild was how little it takes to be a proper metrics source. Here is what each piece does.</p>
+    <div class="grid">
+      <div class="tool"><div class="t">web server</div><h3>Flask</h3><p>A minimal Python web framework. It exists here to serve exactly one route — <code>/metrics</code> — and nothing more.</p></div>
+      <div class="tool"><div class="t">probing</div><h3>HTTP requests</h3><p>For each target the checker sends a GET request with a timeout and reads back the status code — or marks it down if nothing answers.</p></div>
+      <div class="tool"><div class="t">format</div><h3>Prometheus metrics</h3><p>Results are emitted as Prometheus exposition text — one labelled line per target — the lingua franca of modern monitoring.</p></div>
+      <div class="tool"><div class="t">config</div><h3>Target list</h3><p>A simple map of name-to-URL defines what gets checked. Adding a site to monitor is a one-line edit.</p></div>
+      <div class="tool"><div class="t">packaging</div><h3>Docker</h3><p>The whole thing ships as a container, so it drops into any host or monitoring network with no Python setup required.</p></div>
+      <div class="tool"><div class="t">integration</div><h3>Shared network</h3><p>It joins the monitoring stack's own network, so the scraper can reach it by name and pull metrics on its schedule.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="kicker">How a check works</p>
+    <h2>From a scrape to a number</h2>
+    <p>Every time the monitoring system comes knocking, the same quick cycle runs — and it's deliberately stateless:</p>
+    <ol class="flow">
+      <li><h3>Scraper requests metrics <span class="tag on">live</span></h3><p>The monitoring system hits the <code>/metrics</code> endpoint on its regular interval.</p></li>
+      <li><h3>Probe each target <span class="tag on">live</span></h3><p>The checker sends an HTTP request to every URL in its list, one after another, with a timeout guarding each.</p></li>
+      <li><h3>Record the status <span class="tag on">live</span></h3><p>It captures each response's status code — or a zero when a target fails to answer at all.</p></li>
+      <li><h3>Format as metrics <span class="tag on">live</span></h3><p>The results become labelled Prometheus lines, one per target, ready to parse.</p></li>
+      <li><h3>Return the text <span class="tag on">live</span></h3><p>The endpoint replies with plain text, and the scraper stores the snapshot in its time-series database.</p></li>
+      <li><h3>Latency & TLS checks <span class="tag off">future</span></h3><p>Also exporting response time and certificate expiry per target. Left as future work; for now it reports up/down status.</p></li>
+    </ol>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="kicker">Why the pull model</p>
+    <h2>A sensor, not a dashboard</h2>
+    <p>Keeping the checker deliberately dumb is the design — and it pays off in three ways:</p>
+    <ul class="learn">
+      <li><b>Stateless by design:</b> it stores nothing. Every scrape is a fresh measurement, so there's no database to corrupt or back up.</li>
+      <li><b>Standards-based:</b> because it speaks the Prometheus format, any compatible monitoring stack can use it with zero custom glue.</li>
+      <li><b>Trivially composable:</b> graphing, alerting and history all live in the monitoring system — this service just feeds it honest numbers.</li>
+    </ul>
+    <p class="muted" style="margin-top:18px">A failed target reports <code>0</code> instead of crashing — so "the site is down" is itself a clean, alertable signal rather than a gap in the data.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="kicker">Reflection</p>
+    <h2>What building it taught me</h2>
+    <ul class="learn">
+      <li><b>Measuring and storing are different jobs.</b> The Prometheus pull model clicked once I saw that my service only needs to answer "what's true right now" — everything else is someone else's concern.</li>
+      <li><b>A standard format is a superpower.</b> Emitting a handful of well-formed metric lines was all it took to plug a hand-written script into a real observability pipeline.</li>
+      <li><b>Failure is a value, not an error.</b> Reporting <code>0</code> for an unreachable target turns an outage into a first-class signal you can alert on, instead of a hole in the graph.</li>
+      <li><b>Small and containerised travels well.</b> Wrapping fifty lines in Docker meant the checker drops into any monitoring network without dragging a runtime along behind it.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="credit">
+      <div class="k">About this build</div>
+      <p style="margin:0">An original, from-scratch build by <b>Andrea</b> — written to learn how uptime monitoring works by building a small metrics exporter that plugs into a Prometheus-style observability stack. Plain HTML/CSS, deployed on GitHub Pages.</p>
+    </div>
+    <p class="fine">Built from scratch by Andrea · one of an ongoing series of learning builds.</p>
+  </div>
+</footer>
+</body>
+</html>
